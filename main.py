@@ -1,7 +1,15 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
 import psycopg2
 
 app = FastAPI()
+
+class login_data (BaseModel):
+    name: str
+    age: int = None
+    email: str 
+    message: str = None
+
 def create_connection():
     try:
         conn = psycopg2.connect(
@@ -79,7 +87,88 @@ def all_data():
                 'message': user_data[4]
                 }
             users_list.append(user_dict)
-        return user_data
+        return users_list
     else:
         return user_data 
+       
+@app.post('/submit_form')
+def submit_form(login_data: login_data):
+    name = login_data.name
+    age = login_data.age
+    email = login_data.email
+    message = login_data.message
+    conn = create_connection()
+    if conn is not None:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM {} WHERE email = %s".format(table_name), (email,))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            cursor.close()
+            conn.close()
+            return ({"message": "This email is already stored."})
+        else:
+            query = "INSERT INTO {} (name, age, email, message) VALUES (%s, %s, %s, %s)".format(table_name)
+            cursor.execute(query, (name, age, email, message))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print("Data saved")
+            return ({"message": "Data stored successfully"})
+    else:
+        return ({"error": "Failed to connect to the database"})
+    
+    
+@app.put("/update/{user_id}")
+def update_user(user_id: int, new_data: login_data):
+    conn = create_connection()
+    if conn is not None:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM {} WHERE id = %s".format(table_name), (user_id,))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            # Extracting new data
+            name = new_data.name
+            age = new_data.age
+            email = new_data.email
+            message = new_data.message
+            
+            # Updating user data
+            update_query = '''
+                UPDATE {} 
+                SET name = %s, age = %s, email = %s, message = %s 
+                WHERE id = %s
+            '''.format(table_name)
+            cursor.execute(update_query, (name, age, email, message, user_id))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return {"message": "User data updated successfully"}
+        else:
+            cursor.close()
+            conn.close()
+            return {"error": "User not found"}
+    else:
+        return {"error": "Failed to connect to the database"}
+
+@app.delete("/delete/{user_id}")
+def delete_user(user_id: int):
+    conn = create_connection()
+    if conn is not None:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM {} WHERE id = %s".format(table_name), (user_id,))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            delete_query = "DELETE FROM {} WHERE id = %s".format(table_name)
+            cursor.execute(delete_query, (user_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return {"message": "User deleted successfully"}
+        else:
+            cursor.close()
+            conn.close()
+            return {"error": "User not found"}
+    else:
+        return {"error": "Failed to connect to the database"}
+
 
